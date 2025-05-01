@@ -28,6 +28,9 @@ FILE* inputfp[MAX_INPUT_FILES];
 FILE* outputfp = NULL;
 pthread_t requestThreads[MAX_INPUT_FILES];
 pthread_t resolverThreads[MAX_RESOLVER_THREADS];
+pthread_cond_t not_empty = PTHREAD_COND_INITIALIZER;
+pthread_cond_t not_full = PTHREAD_COND_INITIALIZER;
+int count = 0;
 
 // Functions 
 int queuePush(char* hostname);

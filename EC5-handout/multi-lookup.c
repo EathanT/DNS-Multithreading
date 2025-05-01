@@ -13,7 +13,6 @@ int main(int argc, char* argv[]) {
 
     queue_init(&q, QUEUEMAXSIZE);
     if (VERBOSE) printf("[Main] Queue initialized (max %d)\n", QUEUEMAXSIZE);
-
     if (argc < 3) {
         fprintf(stderr, "Usage: %s <input1>... <output>\n", argv[0]);
         return EXIT_FAILURE;
@@ -60,12 +59,6 @@ int main(int argc, char* argv[]) {
         if (VERBOSE) printf("[Main] Request thread %d done\n", i);
     }
 
-    // Send sentinel (NULL) to signal resolver threads to exit
-    for (int i = 0; i < MAX_RESOLVER_THREADS; i++) {
-        queuePush(NULL);
-        if (VERBOSE) printf("[Main] Pushed sentinel for resolver %d\n", i);
-    }
-
     // Wait for consumers
     for (int i = 0; i < MAX_RESOLVER_THREADS; i++) {
         pthread_join(resolverThreads[i], NULL);
@@ -74,6 +67,9 @@ int main(int argc, char* argv[]) {
 
     pthread_mutex_destroy(&qMutex);
     pthread_mutex_destroy(&rMutex);
+    pthread_cond_destroy(&not_empty);
+    pthread_cond_destroy(&not_full);
+    
     if (VERBOSE) printf("[Main] Mutexes destroyed\n");
 
     queue_cleanup(&q);
@@ -86,31 +82,40 @@ int main(int argc, char* argv[]) {
 }
 
 int queuePush(char* hostname) {
-    while (queue_is_full(&q)){
-        usleep(waittime);
+    pthread_mutex_lock(&qMutex);
+
+    // wait for room
+    while(queue_is_full(&q)){
+        pthread_cond_wait(&not_full, &qMutex);
     }
 
-    pthread_mutex_lock(&qMutex);
     if (queue_push(&q, hostname) == QUEUE_FAILURE) {
         fprintf(stderr, "Queue push failed\n");
         pthread_mutex_unlock(&qMutex);
         return EXIT_FAILURE;
     }
+    pthread_cond_signal(&not_empty);
     pthread_mutex_unlock(&qMutex);
+
     if (VERBOSE) printf("[Queue] Pushed '%s'\n", hostname ? hostname : "<NULL>");
     return EXIT_SUCCESS;
 }
 
 char* queuePop() {
     pthread_mutex_lock(&qMutex);
-    while (queue_is_empty(&q)) {
-        pthread_mutex_unlock(&qMutex);
-        usleep(waittime);
-        pthread_mutex_lock(&qMutex);
-
+    while (queue_is_empty(&q) && liveProducers > 0) {
+        pthread_cond_wait(&not_empty, &qMutex);
     }
+
+    if(queue_is_empty(&q) && liveProducers == 0){
+        pthread_mutex_unlock(&qMutex);
+        return NULL;
+    }
+
     char* h = (char*)queue_pop(&q);
+    pthread_cond_signal(&not_full);
     pthread_mutex_unlock(&qMutex);
+
     if (VERBOSE) printf("[Queue] Popped '%s'\n", h ? h : "<NULL>");
     return h;
 }
@@ -118,7 +123,9 @@ char* queuePop() {
 int writeToOutput(char* domain, char* ip) {
     pthread_mutex_lock(&rMutex);
     fprintf(outputfp, "%s,%s\n", domain, ip);
+    fflush(outputfp);
     pthread_mutex_unlock(&rMutex);
+
     if (VERBOSE) printf("[Output] %s,%s\n", domain, ip);
     return EXIT_SUCCESS;
 }
@@ -129,6 +136,13 @@ void* request(void* arg) {
     while (fscanf(fp, INPUTFS, host) > 0) {
         queuePush(strdup(host));
     }
+
+    // signal that one producer is done
+    pthread_mutex_lock(&qMutex);
+    liveProducers--;
+    pthread_cond_broadcast(&not_empty);
+    pthread_mutex_unlock(&qMutex);
+
     if (VERBOSE) printf("[Request] Thread %lu finished\n", pthread_self());
     return NULL;
 }
@@ -136,9 +150,11 @@ void* request(void* arg) {
 void* resolve() {
     char ip[MAX_IP_LENGTH];
     if (VERBOSE) printf("[Resolve] Thread %lu starting\n", pthread_self());
-    while (1) {
+   
+    while (1) {   
         char* host = queuePop();
         if (!host) break;
+        
         if (dnslookup(host, ip, sizeof(ip)) == EXIT_FAILURE) {
             fprintf(stderr, "dnslookup error: %s\n", host);
             ip[0] = '\0';
