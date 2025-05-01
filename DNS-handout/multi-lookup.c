@@ -1,18 +1,31 @@
 #include "multi-lookup.h"
 
-int liveProducers = 0;
-
-
 int main(int argc, char* argv[]){
+    if (BENCHMARKING && currentBenchThreads == 0) {
+        if (!benchmark(argc, argv)) {
+            fprintf(stderr, "Unable to benchmark\n");
+            return EXIT_FAILURE;
+        }
+        return EXIT_SUCCESS; // done benchmarking
+    }
+
+    return run_threads(argc, argv, get_core_count());
+}
+
+int run_threads(int argc, char* argv[], int numResolverThreads){
+    clock_t start_time, end_time;
+
+    start_time = clock();
 
     pthread_mutex_init(&qMutex, NULL);
     pthread_mutex_init(&rMutex, NULL);
 
     srand(time(NULL));
 
-    int maxResolverThreads = get_core_count();
+    int maxResolverThreads = numResolverThreads;
     pthread_t requestThreads[MAX_INPUT_FILES];
     pthread_t resolverThreads[maxResolverThreads];
+
 
     if(VERBOSE) printf("[Main] Core Count: %d\n", get_core_count());
 
@@ -46,7 +59,8 @@ int main(int argc, char* argv[]){
         if (VERBOSE) printf("[Main] Opened input[%d]=%s\n", i, argv[1 + i]);
     }
 
-    outputfp = fopen(argv[argc - 1], "w+");
+    outputfn = argv[argc - 1];
+    outputfp = fopen(outputfn, "w+");
     if (!outputfp) {
         fprintf(stderr, "Error opening output %s\n", argv[argc - 1]);
         return EXIT_FAILURE;
@@ -92,6 +106,11 @@ int main(int argc, char* argv[]){
     for (int i = 0; i < numFiles; i++) fclose(inputfp[i]);
     fclose(outputfp);
     if (VERBOSE) printf("[Main] Files closed, exiting\n");
+
+    end_time = clock();
+
+    lastMainTime = (double)(end_time - start_time) / CLOCKS_PER_SEC;
+
     return EXIT_SUCCESS;
 }
 
@@ -139,8 +158,6 @@ void* request(void* arg) {
     FILE* fp = *(FILE**)arg;
     char host[MAX_NAME_LENGTH];
 
-    rewind(outputfp);
-
     while (fscanf(fp, INPUTFS, host) > 0) {
         if(host[0] == '\0'){
             continue;
@@ -156,7 +173,7 @@ void* request(void* arg) {
         if(query(host) == 1){
             break;
         }else if(VERBOSE){
-            printf("[Request] Couldnt Find %s in Output File\n", host);
+            if(VERBOSE) printf("[Request] Couldnt Find %s in Output File\n", host);
         }
 
         usleep(QUERYTIME);
@@ -186,25 +203,68 @@ void* resolve() {
 
 
 int query(char host[MAX_NAME_LENGTH]) {
-    char line[2048];
-
-    rewind(outputfp);
     int found = 0, lines = 0;
-    while (fgets(line, sizeof line, outputfp)) {
+    FILE *file = fopen(outputfn, "r");
+    if(!file) return 0;
+
+    char line[2048];
+while (fgets(line, sizeof line, file)) {
         lines++;
-        // strip trailing new line
-        line[strcspn(line, "\r\n")] = '\0';
-
-        if(VERBOSE) printf("DEBUG: searching for \"%s\" in \"%s\"\n", host, line);
-
+        if(VERBOSE) printf("[Query] searching for \"%s\" in \"%s\"\n", host, line);
         if (strstr(line, host)) {
             found = 1;
             break;
         }
     }
-    printf("DEBUG: saw %d lines, found %s? %s\n",
+    fclose(file);
+
+    if(VERBOSE) printf("[Query] saw %d lines, found %s? %s\n",
        lines, host, found ? "yes" : "no");
-
-
+    
     return found;
+}
+
+int benchmark(int argc, char* argv[]) {
+    FILE* f = fopen("benchmarks.txt", "w");
+    if (!f) {
+        fprintf(stderr, "Cannot open benchmarks.txt for writing\n");
+        return 0;
+    }
+
+    // CSV Format
+    fprintf(f, "Cores,Threads,Time(s)\n");
+
+    // Loops through coreCounts array, and then also loops through
+    // different amounts of threads for the core count.
+    for (int ci = 0; ci < nSimulated; ci++) {
+        int cores = simulatedCoreCounts[ci];
+        int bestThreads = -1;
+        double bestTime = -1.0;
+
+        for (int t = 1; t <= cores * 3; t++) {
+            currentBenchThreads = t;
+            if (VERBOSE)
+                printf("[Benchmark] Sim Cores=%d, Threads=%d\n", cores, t);
+
+            if (run_threads(argc, argv, t) != EXIT_SUCCESS) {
+                fprintf(f, "%d,%d,ERROR\n", cores, t);
+            } else {
+                fprintf(f, "%d,%d,%.6f\n", cores, t, lastMainTime);
+                if (bestTime < 0 || lastMainTime < bestTime) {
+                    bestTime = lastMainTime;
+                    bestThreads = t;
+                }
+            }
+        }
+
+        fprintf(f,
+            "\n"
+            "### Simulated %d cores\n"
+            "- Optimal threads: %d\n"
+            "- Time: %.6f s\n\n",
+            cores, bestThreads, bestTime);
+    }
+
+    fclose(f);
+    return 1;
 }
