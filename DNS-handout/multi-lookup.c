@@ -241,7 +241,7 @@ int benchmark(int argc, char* argv[]) {
         int bestThreads = -1;
         double bestTime = -1.0;
 
-        for (int t = 1; t <= cores * 3; t++) {
+        for (int t = 1; t <= cores * 2; t++) {
             currentBenchThreads = t;
             if (VERBOSE)
                 printf("[Benchmark] Sim Cores=%d, Threads=%d\n", cores, t);
