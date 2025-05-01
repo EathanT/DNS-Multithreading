@@ -202,28 +202,6 @@ void* resolve() {
 }
 
 
-int query(char host[MAX_NAME_LENGTH]) {
-    int found = 0, lines = 0;
-    FILE *file = fopen(outputfn, "r");
-    if(!file) return 0;
-
-    char line[2048];
-while (fgets(line, sizeof line, file)) {
-        lines++;
-        if(VERBOSE) printf("[Query] searching for \"%s\" in \"%s\"\n", host, line);
-        if (strstr(line, host)) {
-            found = 1;
-            break;
-        }
-    }
-    fclose(file);
-
-    if(VERBOSE) printf("[Query] saw %d lines, found %s? %s\n",
-       lines, host, found ? "yes" : "no");
-    
-    return found;
-}
-
 int benchmark(int argc, char* argv[]) {
     FILE* f = fopen("benchmarks.txt", "w");
     if (!f) {
@@ -234,17 +212,20 @@ int benchmark(int argc, char* argv[]) {
     // CSV Format
     fprintf(f, "Cores,Threads,Time(s)\n");
 
+    // Line Excuted
+    fprintf(f, "Command Line Arguments: %s\n", argv);
+
+
     // Loops through coreCounts array, and then also loops through
     // different amounts of threads for the core count.
-    for (int ci = 0; ci < nSimulated; ci++) {
-        int cores = simulatedCoreCounts[ci];
+        int cores = get_core_count();
         int bestThreads = -1;
         double bestTime = -1.0;
 
-        for (int t = 1; t <= cores * 2; t++) {
+        for (int t = 1; t <= cores * 5; t++) {
             currentBenchThreads = t;
             if (VERBOSE)
-                printf("[Benchmark] Sim Cores=%d, Threads=%d\n", cores, t);
+                printf("[Benchmark] Cores=%d, Threads=%d\n", cores, t);
 
             if (run_threads(argc, argv, t) != EXIT_SUCCESS) {
                 fprintf(f, "%d,%d,ERROR\n", cores, t);
@@ -255,7 +236,9 @@ int benchmark(int argc, char* argv[]) {
                     bestThreads = t;
                 }
             }
-        }
+
+    }
+
 
         fprintf(f,
             "\n"
@@ -263,7 +246,6 @@ int benchmark(int argc, char* argv[]) {
             "- Optimal threads: %d\n"
             "- Time: %.6f s\n\n",
             cores, bestThreads, bestTime);
-    }
 
     fclose(f);
     return 1;

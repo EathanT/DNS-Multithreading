@@ -35,8 +35,6 @@ int liveProducers = 0;
 int BENCHMARKING = 1; 
 int currentBenchThreads = 0;
 double lastMainTime = 0;
-static const int simulatedCoreCounts[] = { 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20 };
-static const int nSimulated = sizeof(simulatedCoreCounts) / sizeof(simulatedCoreCounts[0]);
 
 
 // Runs main program, multithreaded DNS input to outpu 
