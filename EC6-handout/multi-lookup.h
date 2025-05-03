@@ -1,6 +1,11 @@
 #ifndef MULTI_LOOKUP_H
 #define MULTI_LOOKUP_H
 
+/*
+ * Made by: Eathan Tillman
+ * Date : 5/1/2025
+*/
+
 // Includes
 #include <cstdio>
 #include <cstdlib>

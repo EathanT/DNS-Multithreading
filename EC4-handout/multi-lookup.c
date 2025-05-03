@@ -139,7 +139,7 @@ char* queuePop() {
         pthread_mutex_lock(&qMutex);
 
     }
-    char* h = (char*)queue_pop(&q);
+    char* h = queue_pop(&q);
     pthread_mutex_unlock(&qMutex);
     if (VERBOSE) printf("[Queue] Popped '%s'\n", h ? h : "<NULL>");
     return h;
@@ -179,6 +179,8 @@ void* request(void* arg) {
         usleep(QUERYTIME);
     }
 
+    
+
     if (VERBOSE) printf("[Request] Thread %lu finished\n", pthread_self());
     return NULL;
 }
@@ -188,7 +190,8 @@ void* resolve() {
     if (VERBOSE) printf("[Resolve] Thread %lu starting\n", pthread_self());
     while (1) {
         char* host = queuePop();
-        if (!host) break;
+        if(!host) break;
+
         if (dnslookup(host, ip, sizeof(ip)) == EXIT_FAILURE) {
             fprintf(stderr, "dnslookup error: %s\n", host);
             ip[0] = '\0';
@@ -207,7 +210,7 @@ int query(char host[MAX_NAME_LENGTH]) {
     if(!file) return 0;
 
     char line[2048];
-while (fgets(line, sizeof line, file)) {
+    while (fgets(line, sizeof line, file)) {
         lines++;
         if(VERBOSE) printf("[Query] searching for \"%s\" in \"%s\"\n", host, line);
         if (strstr(line, host)) {
@@ -237,7 +240,7 @@ int benchmark(int argc, char* argv[]) {
     for (int i = 0; i < argc; i++) {
         fprintf(f, " %s", argv[i]);
     }
-    fprintf(f, "\n");
+    fprintf(f, "\n\n");
 
 
     // CSV Format
