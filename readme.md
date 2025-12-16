@@ -1,7 +1,4 @@
-# Extra Credit Attempts
-
-## Attempted extra credits options are(each in ECx-handout folders by number): 
-### Some of them have mulitple extra credits combined to make things easier(ex. 4 has a query due to errors)
+Each EC (Extra Challenge) is linked to the following:
 * 1) IPv6 Support and Testing
 * 2) Matching Number of Threads to Number of Cores
 * 3) Full-Loop Lookups
